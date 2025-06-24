@@ -4,6 +4,9 @@ const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const path = require("path");
 
+// เพิ่มบรรทัดนี้เพื่อ import pool เข้ามา
+const pool = require("./config/db");
+
 const memberRoutes = require("./routes/admin/memberRoutes");
 const documentRoutes = require("./routes/admin/documentRoutes");
 const authRoutes = require("./routes/authRoutes");
@@ -20,7 +23,12 @@ const PORT = process.env.PORT || 4000;
 
 app.use(
   cors({
-    origin: "https://ssya-nwt.com",
+    origin: [
+      "https://ssya-nwt.com",
+      "https://www.ssya-nwt.com", // production
+      "http://localhost:3000", // local React dev
+      "http://localhost:3001", // optional local dev
+    ],
     credentials: true,
   })
 );
@@ -41,8 +49,26 @@ app.use("/api/data", adminDataRoutes);
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-app.get("/", (req, res) => {
-  res.send("API Server is running");
+// ปรับปรุงเส้นทางนี้เพื่อแสดงสถานะการเชื่อมต่อฐานข้อมูล
+app.get("/", async (req, res) => {
+  let dbStatus = "Disconnected";
+  let dbError = null;
+
+  try {
+    // ลองรัน query ง่ายๆ เพื่อทดสอบการเชื่อมต่อ
+    await pool.query("SELECT 1");
+    dbStatus = "Connected";
+  } catch (error) {
+    dbStatus = "Failed to connect";
+    dbError = error.message;
+    console.error("Database connection check failed:", error);
+  }
+
+  res.json({
+    message: "API Server is running",
+    databaseStatus: dbStatus,
+    databaseError: dbError, // จะมีค่าถ้าการเชื่อมต่อล้มเหลว
+  });
 });
 
 app.listen(PORT, () => {

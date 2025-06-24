@@ -6,19 +6,17 @@ const {
   downloadMyDocument,
 } = require("../../controllers/user/mydocumentController");
 const {
-  verifyToken,
-  authenticateUser,
+  authenticateRoles, // เปลี่ยนมาใช้ตัวนี้
 } = require("../../middleware/authMiddleware");
 
 // GET /api/my-documents
 router.get(
   "/",
-  verifyToken, // ตรวจว่า JWT ถูกต้อง
-  authenticateUser, // ตรวจว่า role === 'user'
+  authenticateRoles("user", "admin"), // อนุญาตทั้ง user กับ admin
   getMyDocuments
 );
 
 // GET /api/my-documents/:docId
-router.get("/:docId", verifyToken, authenticateUser, downloadMyDocument);
+router.get("/:docId", authenticateRoles("user", "admin"), downloadMyDocument);
 
 module.exports = router;

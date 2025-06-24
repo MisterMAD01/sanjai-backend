@@ -1,43 +1,48 @@
-// mymemberController.js
-// Controller สำหรับดึงและแก้ไขข้อมูลสมาชิก โดยใช้ MySQL pool และเชื่อมโยงกับตาราง users หรือ JWT payload
+// B:\Coding\sanjaithai_web\sanjai-backend\controllers\user\mymemberController.js
+const pool = require("../../config/db"); // ตรวจสอบ path นี้
 
-const jwt = require("jsonwebtoken");
-const pool = require("../../config/db");
-
-/**
- * Middleware: ตรวจสอบ JWT และดึง userId และ memberId ไปใช้ใน req
- */
-exports.authenticate = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "Missing or invalid token" });
-  }
-
-  const token = authHeader.split(" ")[1];
-  try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    // user_id ในตาราง users
-    req.userId = payload.sub ? parseInt(payload.sub, 10) : null;
-    // ถ้า JWT payload มี member_id (หรือ memberId) ก็เซ็ตไว้
-    req.memberId = payload.member_id || payload.memberId || null;
-    return next();
-  } catch (err) {
-    return res.status(401).json({ message: "Invalid or expired token" });
-  }
-};
+// **REMOVED: The 'authenticate' middleware block has been removed from here.**
+// **REMOVED: const jwt = require("jsonwebtoken");** // ไม่จำเป็นต้องใช้ jwt ที่นี่แล้ว
 
 /**
  * ฟังก์ชันช่วยดึง member_id: ถ้ามีใน JWT, return; ถ้าไม่, ดึงจากตาราง users
  */
 async function resolveMemberId(conn, req) {
+  // DEBUGGING: Log req.userId and req.memberId as seen by the controller
+  console.log("DEBUG: resolveMemberId - req.userId:", req.userId);
+  console.log("DEBUG: resolveMemberId - req.memberId:", req.memberId);
+
+  // Option 1: ใช้ memberId ที่ถูกเซ็ตมาจาก JWT payload โดย authMiddleware.js
   if (req.memberId) {
     return req.memberId;
   }
+
+  // Option 2: ถ้าไม่มี memberId ใน JWT (ซึ่งไม่ควรเกิดขึ้นหาก sign ถูกต้อง)
+  // ให้ลองดึงจากตาราง 'users' โดยใช้ req.userId ที่ได้จาก JWT payload
+  const userIdFromToken = req.userId; // ใช้ req.userId ที่ถูกกำหนดโดย authMiddleware.js
+
+  // ตรวจสอบความถูกต้องของ userIdFromToken ก่อนทำการ query DB
+  if (!userIdFromToken || isNaN(userIdFromToken)) {
+    console.error(
+      "resolveMemberId: Invalid userIdFromToken. Value:",
+      userIdFromToken
+    );
+    throw {
+      status: 400,
+      message: "Invalid user ID from token or not logged in",
+    };
+  }
+
   const [userRows] = await conn.query(
     "SELECT member_id FROM users WHERE user_id = ?",
-    [req.userId]
+    [userIdFromToken]
   );
+
   if (userRows.length === 0) {
+    // นี่คือข้อผิดพลาด "User not found" ที่คุณได้รับ
+    console.error(
+      `resolveMemberId: No user found in 'users' table for user_id: ${userIdFromToken}`
+    );
     throw { status: 404, message: "User not found" };
   }
   return userRows[0].member_id;
@@ -51,7 +56,7 @@ exports.getMyMemberInfo = async (req, res) => {
   let conn;
   try {
     conn = await pool.getConnection();
-    const memberId = await resolveMemberId(conn, req);
+    const memberId = await resolveMemberId(conn, req); // memberId ควรเป็นตัวเลขที่ถูกต้อง
 
     let [memberRows] = await conn.query(
       "SELECT * FROM members WHERE member_id = ?",
@@ -59,17 +64,20 @@ exports.getMyMemberInfo = async (req, res) => {
     );
     let member = memberRows[0];
     if (!member) {
-      // สร้าง record เปล่าถ้ายังไม่มี
+      // สร้าง record เปล่าในตาราง members ถ้ายังไม่มีสำหรับ memberId นี้
+      console.log(`Creating new member record for member_id: ${memberId}`);
       await conn.query("INSERT INTO members (member_id) VALUES (?)", [
         memberId,
       ]);
+      // ดึงข้อมูลกลับมาอีกครั้งหลังจากสร้าง
       [memberRows] = await conn.query(
         "SELECT * FROM members WHERE member_id = ?",
         [memberId]
       );
       member = memberRows[0];
     }
-    return res.status(200).json(member);
+    // API returns { member: {...} } as per frontend expectation
+    return res.status(200).json({ member });
   } catch (err) {
     console.error("Error in getMyMemberInfo:", err);
     const status = err.status || 500;
@@ -92,6 +100,7 @@ exports.updateMyMemberInfo = async (req, res) => {
 
     const updates = { ...req.body };
     if (updates.birthday) {
+      // ตรวจสอบการแปลงค่าวันที่สำหรับ MySQL
       updates.birthday = new Date(updates.birthday);
     }
     const fields = Object.keys(updates)
@@ -111,7 +120,7 @@ exports.updateMyMemberInfo = async (req, res) => {
       [memberId]
     );
     const member = memberRows[0];
-    return res.status(200).json(member);
+    return res.status(200).json({ member, message: "อัปเดตข้อมูลสำเร็จ" });
   } catch (err) {
     console.error("Error in updateMyMemberInfo:", err);
     const status = err.status || 500;

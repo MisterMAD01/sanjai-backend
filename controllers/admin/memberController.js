@@ -3,7 +3,7 @@
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const xlsx = require("xlsx"); // ใช้ตัวแปร xlsx
+const xlsx = require("xlsx");
 const mysql = require("mysql2/promise");
 require("dotenv").config();
 
@@ -109,7 +109,7 @@ const importMembersFromExcel = async (req, res) => {
     }
 
     await conn.commit();
-    res.json({ message: "Import users successfully", count: successCount });
+    res.json({ message: "Import members successfully", count: successCount });
   } catch (err) {
     if (conn) await conn.rollback();
     console.error(err);
@@ -230,21 +230,38 @@ const updateMember = async (req, res) => {
   }
 };
 
-// ลบสมาชิก
+// ลบสมาชิก — หากมี user ที่อ้างถึง member_id ให้แจ้งก่อน
 const deleteMember = async (req, res) => {
   const memberId = req.params.memberId;
+  let conn;
+
   try {
-    const conn = await pool.getConnection();
+    conn = await pool.getConnection();
+
+    // ตรวจสอบว่ามี user ที่อ้างถึง member_id นี้หรือไม่
+    const [[{ cnt }]] = await conn.query(
+      "SELECT COUNT(*) AS cnt FROM users WHERE member_id = ?",
+      [memberId]
+    );
+    if (cnt > 0) {
+      return res
+        .status(400)
+        .json({ error: "กรุณาลบบัญชีผู้ใช้งานก่อน จึงจะลบสมาชิกได้" });
+    }
+
+    // ลบ member เมื่อไม่มี user อ้างอิง
     const [result] = await conn.query(
       "DELETE FROM members WHERE member_id = ?",
       [memberId]
     );
     conn.release();
+
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: "Member not found" });
     }
     res.json({ message: "Member deleted successfully" });
   } catch (error) {
+    if (conn) conn.release();
     console.error(error);
     res.status(500).json({ error: "Failed to delete member" });
   }
@@ -268,7 +285,7 @@ const getAllMembers = async (req, res) => {
 module.exports = {
   getAllMembers,
   uploadSingle,
-  importMembersFromExcel, // <- ชื่อฟังก์ชันตรงกับ export
+  importMembersFromExcel,
   addMember,
   updateMember,
   deleteMember,
