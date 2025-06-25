@@ -56,10 +56,15 @@ const columnMap = {
   อีเมล: "email",
   วันที่สร้าง: "created_at",
   วันที่อัปเดต: "updated_at",
+  สถานะปัจจุบัน: "status",
+  ตำแหน่ง: "department",
 };
 
 const importData = async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "ไม่มีไฟล์อัปโหลด" });
+  if (!req.file) {
+    return res.status(400).json({ error: "ไม่มีไฟล์อัปโหลด" });
+  }
+
   const filePath = req.file.path;
   let conn;
   let memberCount = 0;
@@ -69,9 +74,11 @@ const importData = async (req, res) => {
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
+    // อ่านข้อมูลจาก Excel
     const workbook = xlsx.readFile(filePath);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rawData = xlsx.utils.sheet_to_json(sheet, { defval: "" });
+
     const data = rawData.map((row) => {
       const mapped = {};
       for (const [th, en] of Object.entries(columnMap)) {
@@ -81,12 +88,55 @@ const importData = async (req, res) => {
     });
 
     for (const row of data) {
-      if (!row.member_id || !row.full_name || !row.username) continue;
+      console.log("ตรวจสอบ row ก่อนเข้า if =>", row);
 
-      if (!row.password_hash && row.id_card) {
-        row.password_hash = await bcrypt.hash(row.id_card, SALT_ROUNDS);
+      // เติม username ถ้ายังไม่มี
+      if (!row.username && row.member_id) {
+        row.username = `${row.member_id}`;
       }
 
+      // ข้ามถ้าข้อมูลสำคัญไม่ครบ
+      if (!row.member_id || !row.full_name || !row.username) {
+        console.warn("ข้ามแถวเพราะข้อมูลไม่ครบ:", row);
+        continue;
+      }
+
+      // ตรวจสอบวันเกิด (แปลง พ.ศ. เป็น ค.ศ.)
+      if (row.birthday) {
+        try {
+          if (typeof row.birthday === "string" && row.birthday.includes("/")) {
+            const [d, m, y] = row.birthday.split("/");
+            let year = parseInt(y, 10);
+            if (year > 2500) year -= 543;
+            const iso = new Date(`${year}-${m}-${d}`);
+            if (!isNaN(iso)) {
+              row.birthday = iso.toISOString().split("T")[0];
+            } else {
+              console.warn("วันเกิดไม่ถูกต้อง:", row.birthday);
+              delete row.birthday;
+            }
+          } else if (typeof row.birthday === "number") {
+            // Excel date serial number
+            const excelDate = new Date((row.birthday - 25569) * 86400000);
+            row.birthday = excelDate.toISOString().split("T")[0];
+          }
+        } catch {
+          delete row.birthday;
+        }
+      }
+
+      // ตรวจสอบอีเมล
+      if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
+        console.warn("อีเมลไม่ถูกต้อง:", row.email);
+        delete row.email;
+      }
+
+      // เข้ารหัสรหัสผ่านถ้ายังไม่มี
+      if (!row.password_hash && row.id_card) {
+        row.password_hash = await bcrypt.hash(String(row.id_card), SALT_ROUNDS);
+      }
+
+      // เตรียมข้อมูลสมาชิก
       const [exist] = await conn.query(
         "SELECT * FROM members WHERE member_id = ?",
         [row.member_id]
@@ -100,7 +150,10 @@ const importData = async (req, res) => {
       delete memberData.created_at;
       delete memberData.updated_at;
 
+      console.log("memberData =>", memberData);
+
       if (exist.length) {
+        // อัปเดตเฉพาะ field ที่ยังว่าง
         const existing = exist[0];
         const updateData = {};
         for (const key in memberData) {
@@ -118,18 +171,14 @@ const importData = async (req, res) => {
           ]);
         }
       } else {
+        // เพิ่มสมาชิกใหม่
         await conn.query("INSERT INTO members SET ?", memberData);
       }
       memberCount++;
 
-      // User section
-      if (!row.username && row.member_id) {
-        row.username = `${row.member_id}`;
-      }
-
+      // บันทึก user
       if (row.username && row.password_hash) {
         row.role = row.role === "admin" ? "admin" : "user";
-
         const userData = {
           username: row.username,
           password_hash: row.password_hash,
@@ -146,6 +195,7 @@ const importData = async (req, res) => {
           "SELECT user_id FROM users WHERE username = ?",
           [row.username]
         );
+
         if (userExist.length) {
           await conn.query("UPDATE users SET ? WHERE username = ?", [
             userData,
@@ -154,11 +204,12 @@ const importData = async (req, res) => {
         } else {
           await conn.query("INSERT INTO users SET ?", userData);
         }
+
         userCount++;
       }
     }
 
-    // ✅ บันทึกประวัติการนำเข้า
+    // บันทึก log การนำเข้า
     await conn.query(
       "INSERT INTO import_logs (filename, count, performed_by) VALUES (?, ?, ?)",
       [
@@ -214,7 +265,7 @@ const exportData = async (req, res) => {
         m.age, m.gender, m.religion, m.medical_conditions,
         m.allergy_history, m.address, m.phone, m.facebook,
         m.instagram, m.line_id, m.school, m.graduation_year,
-        m.gpa, m.type, m.district,
+        m.gpa, m.type, m.district,m.status, m.department,
         u.username, u.password_hash, u.role, u.email,
         DATE_FORMAT(u.created_at, '%Y-%m-%d') AS created_at,
         DATE_FORMAT(u.updated_at, '%Y-%m-%d') AS updated_at
