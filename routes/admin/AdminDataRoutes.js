@@ -11,6 +11,7 @@ const {
   getImportLogs,
   getExportLogs,
   getSummary,
+  logExport,
 } = require("../../controllers/admin/AdminDataController");
 const { verifyToken, isAdmin } = require("../../middleware/authMiddleware");
 
@@ -32,5 +33,5 @@ router.post("/import", verifyToken, isAdmin, uploadExcel, importData);
 // ส่งออกข้อมูล (members หรือ users) เป็น Excel
 // Query params: type=members | users, plus filters (district, generation, memberType)
 router.get("/export", verifyToken, isAdmin, exportData);
-
+router.post("/log-export", verifyToken, isAdmin, logExport);
 module.exports = router;
