@@ -59,15 +59,15 @@ const getByGeneration = async (req, res) => {
   try {
     const conn = await pool.getConnection();
     const [rows] = await conn.query(`
-      SELECT generation, COUNT(*) AS count 
+      SELECT graduation_year, COUNT(*) AS count 
       FROM members 
-      GROUP BY generation
+      GROUP BY graduation_year
     `);
     conn.release();
 
     const result = {};
     rows.forEach((r) => {
-      result[r.generation || "ไม่ระบุ"] = r.count;
+      result[r.graduation_year || "ไม่ระบุ"] = r.count;
     });
 
     res.json(result);

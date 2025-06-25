@@ -34,14 +34,46 @@ const getAllDocuments = async (req, res) => {
   let conn;
   try {
     conn = await pool.getConnection();
-    const [rows] = await conn.query(`
-      SELECT d.id, d.title, d.description, d.file_path AS filePath,
-             d.upload_date AS uploadDate, m.full_name AS memberName, d.member_id
+
+    // 1. ดึงข้อมูลเอกสาร พร้อมชื่อผู้ส่ง
+    const [documents] = await conn.query(`
+      SELECT 
+        d.id,
+        d.title,
+        d.description,
+        d.file_path AS filePath,
+        d.upload_date AS uploadDate,
+        d.member_id,
+        m.full_name AS sender
       FROM documents d
       LEFT JOIN members m ON d.member_id = m.member_id
       ORDER BY d.upload_date DESC
     `);
-    res.json(rows);
+
+    // 2. ดึงชื่อผู้รับจาก user_documents → users → members
+    const [recipients] = await conn.query(`
+      SELECT 
+        ud.document_id,
+        mem.full_name AS recipientName
+      FROM user_documents ud
+      JOIN users u ON ud.user_id = u.user_id
+      JOIN members mem ON u.member_id = mem.member_id
+    `);
+
+    // 3. รวมชื่อผู้รับตามเอกสาร
+    const recipientMap = {};
+    for (const r of recipients) {
+      if (!recipientMap[r.document_id]) recipientMap[r.document_id] = [];
+      recipientMap[r.document_id].push(r.recipientName);
+    }
+
+    // 4. รวมผู้รับเข้าไปในผลลัพธ์
+    const result = documents.map((doc) => ({
+      ...doc,
+      recipient: recipientMap[doc.id]?.join(", ") || "-",
+    }));
+
+    res.json(result);
   } catch (err) {
     console.error("getAllDocuments error:", err);
     res.status(500).json({ error: "เกิดข้อผิดพลาดในการดึงเอกสาร" });
