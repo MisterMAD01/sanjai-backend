@@ -3,8 +3,6 @@ const router = express.Router();
 
 const {
   getAllMembers,
-  uploadSingle,
-  importMembersFromExcel,
   addMember,
   updateMember,
   deleteMember,
@@ -13,9 +11,6 @@ const { verifyToken, isAdmin } = require("../../middleware/authMiddleware");
 
 // ดึงสมาชิกทั้งหมด
 router.get("/", verifyToken, getAllMembers);
-
-// นำเข้าจาก Excel
-router.post("/import-excel", uploadSingle, importMembersFromExcel);
 
 // เพิ่มสมาชิกใหม่
 router.post("/", verifyToken, isAdmin, addMember);

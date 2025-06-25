@@ -184,11 +184,9 @@ exports.updateCurrentUser = async (req, res) => {
       await connection.rollback(); // Rollback Transaction หากเกิด Error
     }
     console.error("Error in updateCurrentUser:", error);
-    res
-      .status(500)
-      .json({
-        message: error.message || "เกิดข้อผิดพลาดในการอัปเดตข้อมูลผู้ใช้",
-      });
+    res.status(500).json({
+      message: error.message || "เกิดข้อผิดพลาดในการอัปเดตข้อมูลผู้ใช้",
+    });
   } finally {
     if (connection) {
       connection.release(); // คืน connection กลับเข้า pool

@@ -31,95 +31,6 @@ const storage = multer.diskStorage({
 });
 const uploadSingle = multer({ storage }).single("excelFile");
 
-// ฟังก์ชันนำเข้าข้อมูลสมาชิกจาก Excel
-const importMembersFromExcel = async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "No file uploaded." });
-  }
-
-  const filePath = req.file.path;
-  let conn;
-  let successCount = 0;
-
-  try {
-    const workbook = xlsx.readFile(filePath);
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = xlsx.utils.sheet_to_json(sheet, { defval: "" });
-
-    conn = await pool.getConnection();
-    await conn.beginTransaction();
-
-    for (const row of rows) {
-      const {
-        member_id,
-        prefix,
-        full_name,
-        nickname,
-        id_card,
-        birthday,
-        age,
-        gender,
-        religion,
-        medical_conditions,
-        allergy_history,
-        address,
-        phone,
-        facebook,
-        instagram,
-        line_id,
-        school,
-        graduation_year,
-        gpa,
-        type,
-        district,
-      } = row;
-
-      const [result] = await conn.query(
-        `INSERT IGNORE INTO members (
-          member_id, prefix, full_name, nickname, id_card, birthday, age, gender,
-          religion, medical_conditions, allergy_history, address, phone, facebook,
-          instagram, line_id, school, graduation_year, gpa, type, district
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          member_id,
-          prefix,
-          full_name,
-          nickname,
-          id_card,
-          birthday ? new Date(birthday) : null,
-          age,
-          gender,
-          religion,
-          medical_conditions,
-          allergy_history,
-          address,
-          phone,
-          facebook,
-          instagram,
-          line_id,
-          school,
-          graduation_year,
-          gpa,
-          type,
-          district,
-        ]
-      );
-
-      if (result.affectedRows > 0) successCount++;
-    }
-
-    await conn.commit();
-    res.json({ message: "Import members successfully", count: successCount });
-  } catch (err) {
-    if (conn) await conn.rollback();
-    console.error(err);
-    res.status(500).json({ error: "Failed to import Excel." });
-  } finally {
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    if (conn) conn.release();
-  }
-};
-
 // เพิ่มสมาชิกทีละคน
 const addMember = async (req, res) => {
   const member = req.body;
@@ -128,8 +39,9 @@ const addMember = async (req, res) => {
 
     await conn.query(
       `INSERT INTO members 
-        (member_id, prefix, full_name, nickname, id_card, birthday, age, gender, religion, medical_conditions, allergy_history, address, phone, facebook, instagram, line_id, school, graduation_year, gpa, type, district)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (member_id, prefix, full_name, nickname, id_card, birthday, age, gender, religion, medical_conditions, allergy_history, address, phone, facebook, instagram, line_id, school, graduation_year, gpa, type, district,status, department)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
       [
         member.member_id,
         member.prefix,
@@ -152,6 +64,8 @@ const addMember = async (req, res) => {
         member.gpa,
         member.type,
         member.district,
+        member.status,
+        member.department,
       ]
     );
 
@@ -193,6 +107,8 @@ const updateMember = async (req, res) => {
         gpa = ?,
         type = ?,
         district = ?
+        status = ?,
+        department = ?
       WHERE member_id = ?`,
       [
         member.prefix,
@@ -216,6 +132,8 @@ const updateMember = async (req, res) => {
         member.type,
         member.district,
         memberId,
+        member.status,
+        member.department,
       ]
     );
 
@@ -285,7 +203,6 @@ const getAllMembers = async (req, res) => {
 module.exports = {
   getAllMembers,
   uploadSingle,
-  importMembersFromExcel,
   addMember,
   updateMember,
   deleteMember,

@@ -1,27 +1,10 @@
 // B:\Coding\sanjaithai_web\sanjai-backend\controllers\user\mymemberController.js
 const pool = require("../../config/db"); // ตรวจสอบ path นี้
-
-// **REMOVED: The 'authenticate' middleware block has been removed from here.**
-// **REMOVED: const jwt = require("jsonwebtoken");** // ไม่จำเป็นต้องใช้ jwt ที่นี่แล้ว
-
-/**
- * ฟังก์ชันช่วยดึง member_id: ถ้ามีใน JWT, return; ถ้าไม่, ดึงจากตาราง users
- */
 async function resolveMemberId(conn, req) {
-  // DEBUGGING: Log req.userId and req.memberId as seen by the controller
-  console.log("DEBUG: resolveMemberId - req.userId:", req.userId);
-  console.log("DEBUG: resolveMemberId - req.memberId:", req.memberId);
-
-  // Option 1: ใช้ memberId ที่ถูกเซ็ตมาจาก JWT payload โดย authMiddleware.js
   if (req.memberId) {
     return req.memberId;
   }
-
-  // Option 2: ถ้าไม่มี memberId ใน JWT (ซึ่งไม่ควรเกิดขึ้นหาก sign ถูกต้อง)
-  // ให้ลองดึงจากตาราง 'users' โดยใช้ req.userId ที่ได้จาก JWT payload
   const userIdFromToken = req.userId; // ใช้ req.userId ที่ถูกกำหนดโดย authMiddleware.js
-
-  // ตรวจสอบความถูกต้องของ userIdFromToken ก่อนทำการ query DB
   if (!userIdFromToken || isNaN(userIdFromToken)) {
     console.error(
       "resolveMemberId: Invalid userIdFromToken. Value:",
@@ -32,14 +15,12 @@ async function resolveMemberId(conn, req) {
       message: "Invalid user ID from token or not logged in",
     };
   }
-
   const [userRows] = await conn.query(
     "SELECT member_id FROM users WHERE user_id = ?",
     [userIdFromToken]
   );
 
   if (userRows.length === 0) {
-    // นี่คือข้อผิดพลาด "User not found" ที่คุณได้รับ
     console.error(
       `resolveMemberId: No user found in 'users' table for user_id: ${userIdFromToken}`
     );
