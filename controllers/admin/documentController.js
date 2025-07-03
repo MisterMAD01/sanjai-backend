@@ -1,4 +1,5 @@
-// controllers/admin/documentController.js
+// src/controllers/admin/documentController.js
+
 const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
@@ -18,9 +19,8 @@ const storage = multer.diskStorage({
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // สูงสุด 10MB
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   fileFilter: (req, file, cb) => {
-    // ยอมรับเฉพาะ PDF, DOCX, XLSX, PNG, JPG
     const allowed = /\.(pdf|docx|xlsx|png|jpe?g)$/i;
     if (!allowed.test(file.originalname)) {
       return cb(new Error("ไฟล์นามสกุลไม่ถูกต้อง"), false);
@@ -30,50 +30,28 @@ const upload = multer({
 }).single("file");
 
 // GET /api/documents
+// คืนหนึ่งแถวต่อหนึ่งคู่ (document ↔ recipient)
 const getAllDocuments = async (req, res) => {
   let conn;
   try {
     conn = await pool.getConnection();
-
-    // 1. ดึงข้อมูลเอกสาร พร้อมชื่อผู้ส่ง
-    const [documents] = await conn.query(`
-      SELECT 
+    const [rows] = await conn.query(`
+      SELECT
         d.id,
         d.title,
         d.description,
-        d.file_path AS filePath,
+        d.file_path   AS filePath,
         d.upload_date AS uploadDate,
-        d.member_id,
-        m.full_name AS sender
+        m_s.full_name AS sender,
+        COALESCE(m_r.full_name, '-') AS recipient
       FROM documents d
-      LEFT JOIN members m ON d.member_id = m.member_id
-      ORDER BY d.upload_date DESC
+      LEFT JOIN members m_s 
+        ON d.member_id    = m_s.member_id
+      LEFT JOIN members m_r 
+        ON d.recipient_id = m_r.member_id
+      ORDER BY d.upload_date DESC, d.id
     `);
-
-    // 2. ดึงชื่อผู้รับจาก user_documents → users → members
-    const [recipients] = await conn.query(`
-      SELECT 
-        ud.document_id,
-        mem.full_name AS recipientName
-      FROM user_documents ud
-      JOIN users u ON ud.user_id = u.user_id
-      JOIN members mem ON u.member_id = mem.member_id
-    `);
-
-    // 3. รวมชื่อผู้รับตามเอกสาร
-    const recipientMap = {};
-    for (const r of recipients) {
-      if (!recipientMap[r.document_id]) recipientMap[r.document_id] = [];
-      recipientMap[r.document_id].push(r.recipientName);
-    }
-
-    // 4. รวมผู้รับเข้าไปในผลลัพธ์
-    const result = documents.map((doc) => ({
-      ...doc,
-      recipient: recipientMap[doc.id]?.join(", ") || "-",
-    }));
-
-    res.json(result);
+    res.json(rows);
   } catch (err) {
     console.error("getAllDocuments error:", err);
     res.status(500).json({ error: "เกิดข้อผิดพลาดในการดึงเอกสาร" });
@@ -83,64 +61,51 @@ const getAllDocuments = async (req, res) => {
 };
 
 // POST /api/documents
-// รับ body: { title, memberId, description, userIds? } + file field
-// controllers/admin/documentController.js
+// รับ title, description, recipientId + file
+// ผู้ส่งดึงจาก req.memberId (ตั้งโดย authMiddleware)
 const uploadDocument = async (req, res) => {
-  const { title, memberId, description, userIds } = req.body;
+  const { title, description, recipientId } = req.body;
   const file = req.file;
+  const senderId = req.memberId; // ได้ค่าจาก authMiddleware
 
-  if (!file) return res.status(400).json({ error: "ต้องแนบไฟล์ในการอัปโหลด" });
-  if (!title || !memberId)
-    return res.status(400).json({ error: "กรุณาระบุ title และ memberId" });
+  // ตรวจสอบ input
+  if (!file) {
+    return res.status(400).json({ error: "ต้องแนบไฟล์ในการอัปโหลด" });
+  }
+  if (!title || !recipientId) {
+    return res
+      .status(400)
+      .json({ error: "กรุณาระบุชื่อเอกสาร และเลือกผู้รับ" });
+  }
+  if (!senderId) {
+    return res
+      .status(401)
+      .json({ error: "ไม่พบข้อมูลผู้ส่ง กรุณาล็อกอินใหม่" });
+  }
 
   let conn;
   try {
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
-    // 1) Insert เอกสารใหม่
+    // บันทึกเอกสารพร้อมผู้ส่งและผู้รับ
     const [insertResult] = await conn.query(
       `INSERT INTO documents
-         (title, file_path, member_id, upload_date, description)
-       VALUES (?, ?, ?, NOW(), ?)`,
-      [title, file.filename, memberId, description || null]
+         (title, file_path, member_id, recipient_id, upload_date, description)
+       VALUES (?, ?, ?, ?, NOW(), ?)`,
+      [title, file.filename, senderId, recipientId, description || null]
     );
     const documentId = insertResult.insertId;
-
-    // 2) เตรียม list userIds: ถ้าไม่มีเฉพาะ userIds ใน body ให้ดึง user ทั้งหมดที่ role='user'
-    let targetUserIds =
-      Array.isArray(userIds) && userIds.length ? userIds : null;
-
-    if (!targetUserIds) {
-      const [users] = await conn.query(
-        `SELECT user_id FROM users WHERE role = 'user'`
-      );
-      targetUserIds = users.map((u) => u.user_id);
-    }
-
-    // 3) Insert ลง user_documents
-    if (targetUserIds.length) {
-      const pairs = targetUserIds.map((uid) => [uid, documentId]);
-      await conn.query(
-        `INSERT INTO user_documents (user_id, document_id) VALUES ?`,
-        [pairs]
-      );
-    }
-
-    // 4) ดึงชื่อสมาชิกเพื่อคืน response
-    const [[memberRow]] = await conn.query(
-      `SELECT full_name FROM members WHERE member_id = ?`,
-      [memberId]
-    );
 
     await conn.commit();
 
     res.status(201).json({
       id: documentId,
       title,
-      memberName: memberRow?.full_name || "ไม่ทราบชื่อ",
-      uploadDate: new Date(),
       filePath: file.filename,
+      uploadDate: new Date(),
+      senderId,
+      recipientId,
     });
   } catch (err) {
     if (conn) await conn.rollback();
@@ -159,7 +124,7 @@ const deleteDocument = async (req, res) => {
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
-    // 1) ดึงชื่อไฟล์
+    // หาไฟล์เก่า
     const [rows] = await conn.query(
       `SELECT file_path FROM documents WHERE id = ?`,
       [id]
@@ -169,7 +134,7 @@ const deleteDocument = async (req, res) => {
       return res.status(404).json({ error: "ไม่พบเอกสาร" });
     }
 
-    // 2) ลบไฟล์จริง
+    // ลบไฟล์จริง
     const filePath = path.join(
       __dirname,
       "..",
@@ -179,8 +144,7 @@ const deleteDocument = async (req, res) => {
     );
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
-    // 3) ลบเรคอร์ดจาก user_documents และ documents
-    await conn.query(`DELETE FROM user_documents WHERE document_id = ?`, [id]);
+    // ลบ record
     await conn.query(`DELETE FROM documents WHERE id = ?`, [id]);
 
     await conn.commit();
@@ -188,7 +152,7 @@ const deleteDocument = async (req, res) => {
   } catch (err) {
     if (conn) await conn.rollback();
     console.error("deleteDocument error:", err);
-    res.status(500).json({ error: "เกิดข้อผิดพลาดในการลบ" });
+    res.status(500).json({ error: "เกิดข้อผิดพลาดในการลบเอกสาร" });
   } finally {
     if (conn) conn.release();
   }
