@@ -36,12 +36,10 @@ const addMember = async (req, res) => {
   const member = req.body;
   try {
     const conn = await pool.getConnection();
-
     await conn.query(
-      `INSERT INTO members 
-        (member_id, prefix, full_name, nickname, id_card, birthday, age, gender, religion, medical_conditions, allergy_history, address, phone, facebook, instagram, line_id, school, graduation_year, gpa, type, district,status, department)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
+      `INSERT INTO members
+        (member_id, prefix, full_name, nickname, id_card, birthday, age, gender, religion, medical_conditions, allergy_history, address, phone, facebook, instagram, line_id, school, graduation_year, gpa, type, district, status, department)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         member.member_id,
         member.prefix,
@@ -68,7 +66,6 @@ const addMember = async (req, res) => {
         member.department,
       ]
     );
-
     conn.release();
     res.json({ message: "Member added successfully" });
   } catch (error) {
@@ -80,64 +77,63 @@ const addMember = async (req, res) => {
 // แก้ไขสมาชิก
 const updateMember = async (req, res) => {
   const memberId = req.params.memberId;
-  const member = req.body;
+  const m = req.body;
 
   try {
     const conn = await pool.getConnection();
-
     const [result] = await conn.query(
       `UPDATE members SET
-        prefix = ?,
-        full_name = ?,
-        nickname = ?,
-        id_card = ?,
-        birthday = ?,
-        age = ?,
-        gender = ?,
-        religion = ?,
-        medical_conditions = ?,
-        allergy_history = ?,
-        address = ?,
-        phone = ?,
-        facebook = ?,
-        instagram = ?,
-        line_id = ?,
-        school = ?,
-        graduation_year = ?,
-        gpa = ?,
-        type = ?,
-        district = ?
-        status = ?,
-        department = ?
-      WHERE member_id = ?`,
+         prefix             = ?,
+         full_name          = ?,
+         nickname           = ?,
+         id_card            = ?,
+         birthday           = ?,
+         age                = ?,
+         gender             = ?,
+         religion           = ?,
+         medical_conditions = ?,
+         allergy_history    = ?,
+         address            = ?,
+         phone              = ?,
+         facebook           = ?,
+         instagram          = ?,
+         line_id            = ?,
+         school             = ?,
+         graduation_year    = ?,
+         gpa                = ?,
+         type               = ?,
+         district           = ?,
+         status             = ?,
+         department         = ?
+       WHERE member_id = ?`,
       [
-        member.prefix,
-        member.full_name,
-        member.nickname,
-        member.id_card,
-        member.birthday ? new Date(member.birthday) : null,
-        member.age,
-        member.gender,
-        member.religion,
-        member.medical_conditions,
-        member.allergy_history,
-        member.address,
-        member.phone,
-        member.facebook,
-        member.instagram,
-        member.line_id,
-        member.school,
-        member.graduation_year,
-        member.gpa,
-        member.type,
-        member.district,
+        m.prefix,
+        m.full_name,
+        m.nickname,
+        m.id_card,
+        m.birthday ? new Date(m.birthday) : null,
+        m.age,
+        m.gender,
+        m.religion,
+        m.medical_conditions,
+        m.allergy_history,
+        m.address,
+        m.phone,
+        m.facebook,
+        m.instagram,
+        m.line_id,
+        m.school,
+        m.graduation_year,
+        m.gpa,
+        m.type,
+        m.district,
+        m.status,
+        m.department,
         memberId,
-        member.status,
-        member.department,
       ]
     );
-
     conn.release();
+
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: "Member not found" });
     }
