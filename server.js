@@ -17,6 +17,8 @@ const dashboardRoutes = require("./routes/user/DashboardRoutes");
 const myMemberRoutes = require("./routes/user/mymemberRoutes");
 const settingsRoutes = require("./routes/user/settingsRoutes");
 const adminDataRoutes = require("./routes/admin/AdminDataRoutes");
+const adminActivityRoutes = require("./routes/admin/activityRoutes");
+const userActivityRoutes = require("./routes/user/MyactivityRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -33,6 +35,11 @@ app.use(
   })
 );
 
+// ✅ ให้ browser เห็น Content-Disposition header
+app.use((req, res, next) => {
+  res.header("Access-Control-Expose-Headers", "Content-Disposition");
+  next();
+});
 app.use(express.json());
 app.use(cookieParser());
 
@@ -46,6 +53,8 @@ app.use("/api/admin/users", adminRoutes);
 app.use("/api/my-documents", myDocRoutes);
 app.use("/api/user/settings", settingsRoutes);
 app.use("/api/data", adminDataRoutes);
+app.use("/api/admin/activities", adminActivityRoutes);
+app.use("/api/user/activities", userActivityRoutes);
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
