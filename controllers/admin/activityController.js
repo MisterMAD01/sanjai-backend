@@ -191,9 +191,16 @@ exports.downloadApplicantsExcel = async (req, res) => {
     const activityName = activityRows[0].name;
 
     const [applicants] = await pool.query(
-      `SELECT a.id, a.name, a.phone, a.registered_at, u.email
+      `SELECT 
+         a.member_id,
+         m.prefix,
+         m.full_name,
+         a.phone,
+         a.registered_at,
+         u.email
        FROM applicants a
        LEFT JOIN users u ON a.member_id = u.member_id
+       LEFT JOIN members m ON a.member_id = m.member_id
        WHERE a.activity_id = ?
        ORDER BY a.registered_at DESC`,
       [id]
@@ -204,7 +211,7 @@ exports.downloadApplicantsExcel = async (req, res) => {
     const worksheet = workbook.addWorksheet("Applicants");
 
     worksheet.columns = [
-      { header: "ID", key: "id", width: 10 },
+      { header: "เลขที่สมาชิก", key: "member_id", width: 15 },
       { header: "ชื่อ", key: "name", width: 30 },
       { header: "อีเมล", key: "email", width: 30 },
       { header: "เบอร์โทรศัพท์", key: "phone", width: 20 },
@@ -212,12 +219,19 @@ exports.downloadApplicantsExcel = async (req, res) => {
     ];
 
     applicants.forEach((applicant) => {
+      const date = new Date(applicant.registered_at);
+      const day = String(date.getDate()).padStart(2, "0");
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const year = date.getFullYear() + 543;
+
+      const formattedDate = `${day}/${month}/${year}`;
+
       worksheet.addRow({
-        id: applicant.id,
-        name: applicant.name,
+        member_id: applicant.member_id,
+        name: `${applicant.prefix || ""}${applicant.full_name || "-"}`,
         email: applicant.email || "-",
         phone: applicant.phone,
-        registered_at: applicant.registered_at,
+        registered_at: formattedDate,
       });
     });
 

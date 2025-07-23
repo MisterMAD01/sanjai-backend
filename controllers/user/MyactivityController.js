@@ -4,9 +4,8 @@ exports.getOpenActivities = async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT 
-        id, name, date, location, detail, image_path_schedule, image_path_qr 
+        id, name, date, location, detail, register_open, image_path_schedule, image_path_qr 
        FROM activities 
-       WHERE register_open=1 
        ORDER BY date DESC`
     );
     res.json(rows);
@@ -22,15 +21,13 @@ exports.getActivityById = async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT 
-         id, name, date, location, detail, image_path_schedule, image_path_qr 
+         id, name, date, location, detail, register_open, image_path_schedule, image_path_qr 
        FROM activities 
-       WHERE id=? AND register_open=1`,
+       WHERE id = ?`,
       [id]
     );
     if (rows.length === 0) {
-      return res
-        .status(404)
-        .json({ message: "ไม่พบกิจกรรม หรือปิดรับสมัครแล้ว" });
+      return res.status(404).json({ message: "ไม่พบกิจกรรม" });
     }
     res.json(rows[0]);
   } catch (error) {
@@ -41,7 +38,7 @@ exports.getActivityById = async (req, res) => {
 
 exports.registerForActivity = async (req, res) => {
   const activityId = req.params.id;
-  const memberId = req.user.memberId; // ได้จาก token
+  const memberId = req.user.memberId;
   const phone = req.body.phone;
 
   if (!phone) {
@@ -49,6 +46,16 @@ exports.registerForActivity = async (req, res) => {
   }
 
   try {
+    // ตรวจสอบว่ากิจกรรมนี้เปิดรับสมัครหรือไม่
+    const [activityRows] = await pool.query(
+      "SELECT register_open FROM activities WHERE id = ?",
+      [activityId]
+    );
+
+    if (!activityRows.length || !activityRows[0].register_open) {
+      return res.status(400).json({ message: "กิจกรรมนี้ปิดรับสมัครแล้ว" });
+    }
+
     // เช็คว่ามีการสมัครแล้วหรือยัง
     const [existing] = await pool.query(
       "SELECT * FROM applicants WHERE activity_id = ? AND member_id = ?",
@@ -94,9 +101,9 @@ exports.getUserRegisteredActivities = async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT a.activity_id, ac.name, ac.date, ac.location, ac.detail, ac.image_path_schedule, ac.image_path_qr
-   FROM applicants a
-   JOIN activities ac ON a.activity_id = ac.id
-   WHERE a.member_id = ?`,
+       FROM applicants a
+       JOIN activities ac ON a.activity_id = ac.id
+       WHERE a.member_id = ?`,
       [memberId]
     );
 
