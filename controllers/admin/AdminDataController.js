@@ -46,7 +46,7 @@ const columnMap = {
   Instagram: "instagram",
   "LINE ID": "line_id",
   โรงเรียน: "school",
-  ปีจบ: "graduation_year",
+  รุ่นที่: "graduation_year",
   เกรดเฉลี่ย: "gpa",
   ประเภทสมาชิก: "type",
   อำเภอ: "district",
