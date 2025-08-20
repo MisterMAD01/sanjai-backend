@@ -92,6 +92,42 @@ const EventActivityController = {
     }
   },
 
+  // ลบผู้เข้าร่วมกิจกรรมและคะแนนที่เกี่ยวข้อง
+  deleteParticipants: async (req, res) => {
+    const conn = await pool.getConnection();
+    try {
+      const { activityId } = req.params;
+
+      await conn.beginTransaction();
+
+      // ลบคะแนนของสมาชิกที่เกี่ยวข้องกับกิจกรรมนี้
+      await conn.query(`DELETE FROM member_points WHERE event_id = ?`, [
+        activityId,
+      ]);
+
+      // ลบผู้เข้าร่วมกิจกรรม
+      const [result] = await conn.query(
+        `DELETE FROM event_applicants WHERE event_id = ?`,
+        [activityId]
+      );
+
+      await conn.commit();
+
+      res.json({
+        message:
+          "All participants and their points have been deleted for this activity",
+        deletedCount: result.affectedRows,
+        activityId,
+      });
+    } catch (err) {
+      await conn.rollback();
+      console.error("Error deleteParticipants:", err);
+      res.status(500).json({ message: "Server error" });
+    } finally {
+      conn.release();
+    }
+  },
+
   // ลงทะเบียนสมาชิกเข้าร่วมกิจกรรม
   registerForActivity: async (req, res) => {
     const conn = await pool.getConnection();

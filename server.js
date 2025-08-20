@@ -7,7 +7,10 @@ const path = require("path");
 const pool = require("./config/db");
 
 // Auth routes
-const authRoutes = require("./routes/authRoutes");
+const authRoutes = require("./routes/auth/authRoutes");
+
+// Middleware
+// const { verifyToken } = require("./middleware/authMiddleware");
 
 // Admin routes
 const memberRoutes = require("./routes/admin/memberRoutes");

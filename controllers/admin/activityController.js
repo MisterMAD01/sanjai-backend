@@ -219,12 +219,29 @@ exports.downloadApplicantsExcel = async (req, res) => {
     ];
 
     applicants.forEach((applicant) => {
+      // สร้างตัวแปร date ก่อน
       const date = new Date(applicant.registered_at);
-      const day = String(date.getDate()).padStart(2, "0");
-      const month = String(date.getMonth() + 1).padStart(2, "0");
+
+      const thaiMonths = [
+        "มกราคม",
+        "กุมภาพันธ์",
+        "มีนาคม",
+        "เมษายน",
+        "พฤษภาคม",
+        "มิถุนายน",
+        "กรกฎาคม",
+        "สิงหาคม",
+        "กันยายน",
+        "ตุลาคม",
+        "พฤศจิกายน",
+        "ธันวาคม",
+      ];
+
+      const day = date.getDate();
+      const monthName = thaiMonths[date.getMonth()];
       const year = date.getFullYear() + 543;
 
-      const formattedDate = `${day}/${month}/${year}`;
+      const formattedDate = `${day} ${monthName} ${year}`;
 
       worksheet.addRow({
         member_id: applicant.member_id,
