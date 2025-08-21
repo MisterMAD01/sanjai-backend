@@ -1,4 +1,5 @@
 const pool = require("../../config/db"); // สมมติ pool คือ MySQL connection pool
+const ExcelJS = require("exceljs"); // เพิ่มบรรทัดนี้
 
 const PointsController = {
   // ดูสรุปแต้มสมาชิกทั้งหมด (เฉพาะคนที่เข้าร่วมกิจกรรม)
@@ -67,6 +68,74 @@ const PointsController = {
       });
     } catch (err) {
       console.error(err);
+      res.status(500).json({ message: "Server error" });
+    }
+  },
+  // controllers/admin/pointsController.js
+  exportAllMemberPoints: async (req, res) => {
+    try {
+      // ดึงข้อมูลเฉพาะสมาชิกที่มีคะแนน (เข้าร่วมกิจกรรม)
+      const [rows] = await pool.query(
+        `SELECT m.member_id, m.full_name, 
+              SUM(mp.points_awarded) AS total_points,
+              COUNT(mp.event_id) AS activities_participated
+       FROM members m
+       INNER JOIN member_points mp ON m.member_id = mp.member_id
+       GROUP BY m.member_id, m.full_name
+       ORDER BY total_points DESC`
+      );
+
+      if (!rows.length) {
+        return res.status(404).json({ message: "ไม่พบสมาชิกที่มีคะแนน" });
+      }
+
+      // สร้าง Excel
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Member Points Report");
+
+      // ตั้งค่า header style
+      worksheet.columns = [
+        { header: "ลำดับ", key: "index", width: 10 },
+        { header: "รหัสสมาชิก", key: "member_id", width: 15 },
+        { header: "ชื่อ-นามสกุล", key: "full_name", width: 30 },
+        { header: "จำนวนกิจกรรม", key: "activities_participated", width: 20 },
+        { header: "คะแนนรวม", key: "total_points", width: 15 },
+      ];
+
+      // จัดรูปแบบ header
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE6E6FA" },
+      };
+
+      // เพิ่มข้อมูล
+      rows.forEach((row, index) => {
+        worksheet.addRow({
+          index: index + 1,
+          member_id: row.member_id,
+          full_name: row.full_name,
+          activities_participated: row.activities_participated,
+          total_points: row.total_points,
+        });
+      });
+
+      // ตั้งค่า response headers
+      const currentDate = new Date().toISOString().split("T")[0];
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename=member_points_${currentDate}.xlsx`
+      );
+
+      await workbook.xlsx.write(res);
+      res.end();
+    } catch (err) {
+      console.error("Export error:", err);
       res.status(500).json({ message: "Server error" });
     }
   },

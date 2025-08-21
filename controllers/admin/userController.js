@@ -35,8 +35,19 @@ const getAllUsers = async (req, res) => {
   try {
     const conn = await pool.getConnection();
     const [rows] = await conn.query(
-      `SELECT user_id, username, role, member_id, email, approved, created_at, updated_at
-       FROM users ORDER BY created_at DESC`
+      `SELECT 
+         u.user_id, 
+         u.username, 
+         u.role, 
+         u.member_id, 
+         m.full_name AS full_name,
+         u.email, 
+         u.approved, 
+         u.created_at, 
+         u.updated_at
+       FROM users u
+       LEFT JOIN members m ON u.member_id = m.member_id
+       ORDER BY u.created_at DESC`
     );
     conn.release();
     res.json(rows);
