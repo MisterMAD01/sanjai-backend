@@ -175,7 +175,7 @@ const EventActivityController = {
       );
       if (memberRows.length === 0) {
         await conn.rollback();
-        return res.status(404).json({ message: "Member not found" });
+        return res.status(404).json({ message: "ไม่เจอเลขที่สมาชิก" });
       }
       const member = memberRows[0];
 
@@ -186,7 +186,7 @@ const EventActivityController = {
       );
       if (existing.length > 0) {
         await conn.rollback();
-        return res.status(400).json({ message: "Member already registered" });
+        return res.status(400).json({ message: "สมาชิกนี้ได้ลงทะเบียนแล้ว" });
       }
 
       // เพิ่มผู้เข้าร่วม

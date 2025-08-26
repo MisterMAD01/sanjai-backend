@@ -4,7 +4,7 @@ const pool = require("../../config/db");
 
 // POST /api/auth/login
 exports.login = async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, rememberMe } = req.body; // รับค่า rememberMe จาก client
 
   if (!username || !password) {
     return res.status(400).json({ message: "กรุณาระบุ username และ password" });
@@ -32,25 +32,27 @@ exports.login = async (req, res) => {
         .json({ message: "บัญชีของคุณยังไม่ได้รับการอนุมัติ" });
     }
 
-    // สร้าง Access Token พร้อม memberId
+    // สร้าง Access Token (15 วินาที สำหรับทดสอบ)
     const accessToken = jwt.sign(
       { id: user.user_id, role: user.role, memberId: user.member_id },
       process.env.JWT_SECRET,
-      { expiresIn: "15m" }
+      { expiresIn: "15s" } // จาก 15 นาที → 15 วินาที
     );
 
-    // สร้าง Refresh Token พร้อม memberId
+    // สร้าง Refresh Token (3 วันถ้า rememberMe, 1 วันถ้าไม่ติ๊ก)
+    const refreshExpiry = rememberMe ? "3d" : "1d";
     const refreshToken = jwt.sign(
       { id: user.user_id, role: user.role, memberId: user.member_id },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: refreshExpiry }
     );
 
+    // ตั้งค่า cookie สำหรับ refresh token
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: false, // เปลี่ยนเป็น true ถ้าใช้ HTTPS
       sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: rememberMe ? 3 * 24 * 60 * 60 * 1000 : 1 * 24 * 60 * 60 * 1000,
     });
 
     res.json({
@@ -79,16 +81,17 @@ exports.refreshToken = async (req, res) => {
     const [rows] = await pool.execute("SELECT * FROM users WHERE user_id = ?", [
       payload.id,
     ]);
+
     if (rows.length === 0)
       return res.status(404).json({ message: "ไม่พบผู้ใช้" });
 
     const user = rows[0];
 
-    // สร้าง Access Token ใหม่ พร้อม memberId
+    // สร้าง Access Token ใหม่ (15 วินาที สำหรับทดสอบ)
     const accessToken = jwt.sign(
       { id: user.user_id, role: user.role, memberId: user.member_id },
       process.env.JWT_SECRET,
-      { expiresIn: "15m" }
+      { expiresIn: "15s" } // จาก 15 นาที → 15 วินาที
     );
 
     res.json({ token: accessToken });
@@ -99,6 +102,11 @@ exports.refreshToken = async (req, res) => {
 
 // POST /api/auth/logout
 exports.logout = (req, res) => {
-  res.clearCookie("refreshToken");
+  // ล้าง refresh token cookie
+  res.clearCookie("refreshToken", {
+    httpOnly: true,
+    secure: false,
+    sameSite: "lax",
+  });
   res.json({ message: "ออกจากระบบสำเร็จ" });
 };
