@@ -54,23 +54,54 @@ const EventActivityController = {
 
   // แก้ไขกิจกรรม
   updateActivity: async (req, res) => {
+    const conn = await pool.getConnection();
     try {
       const { activityId } = req.params;
       const { event_name, event_date, location, points, description } =
         req.body;
-      const [result] = await pool.query(
-        `UPDATE event_activities 
-         SET event_name=?, event_date=?, location=?, points=?, description=? 
-         WHERE event_id=?`,
-        [event_name, event_date, location, points, description, activityId]
+
+      await conn.beginTransaction();
+
+      // ดึงค่า points เดิมมาก่อน
+      const [oldActivityRows] = await conn.query(
+        "SELECT points FROM event_activities WHERE event_id = ?",
+        [activityId]
       );
-      if (result.affectedRows === 0) {
+      if (oldActivityRows.length === 0) {
+        await conn.rollback();
         return res.status(404).json({ message: "Activity not found" });
       }
+      const oldPoints = oldActivityRows[0].points;
+
+      // อัปเดตกิจกรรม
+      const [result] = await conn.query(
+        `UPDATE event_activities 
+       SET event_name=?, event_date=?, location=?, points=?, description=? 
+       WHERE event_id=?`,
+        [event_name, event_date, location, points, description, activityId]
+      );
+
+      if (result.affectedRows === 0) {
+        await conn.rollback();
+        return res.status(404).json({ message: "Activity not found" });
+      }
+
+      // ถ้าแก้ไขค่า points → ต้องไปอัปเดตใน member_points ด้วย
+      if (points !== oldPoints) {
+        await conn.query(
+          `UPDATE member_points SET points_awarded = ? WHERE event_id = ?`,
+          [points, activityId]
+        );
+      }
+
+      await conn.commit();
       res.json({ message: "Activity updated" });
     } catch (err) {
+      await conn.rollback();
       console.error("Error updateActivity:", err);
       res.status(500).json({ message: "Server error" });
+    } finally {
+      conn.release();
     }
   },
 
@@ -219,6 +250,42 @@ const EventActivityController = {
     } catch (err) {
       console.error("Error getParticipants:", err);
       res.status(500).json({ message: "Server error" });
+    }
+  },
+
+  // ลบผู้เข้าร่วมคนเดียวและคะแนนของเขา
+  deleteParticipantById: async (req, res) => {
+    const conn = await pool.getConnection();
+    try {
+      const { activityId, memberId } = req.params;
+
+      await conn.beginTransaction();
+
+      // ลบคะแนนของสมาชิกจากกิจกรรม (ถ้ามี)
+      await conn.query(
+        `DELETE FROM member_points WHERE event_id = ? AND member_id = ?`,
+        [activityId, memberId]
+      );
+
+      // ลบผู้เข้าร่วมกิจกรรม
+      const [result] = await conn.query(
+        `DELETE FROM event_applicants WHERE event_id = ? AND member_id = ?`,
+        [activityId, memberId]
+      );
+
+      if (result.affectedRows === 0) {
+        await conn.rollback();
+        return res.status(404).json({ message: "Participant not found" });
+      }
+
+      await conn.commit();
+      res.json({ message: "Participant removed successfully" });
+    } catch (err) {
+      await conn.rollback();
+      console.error("Error deleteParticipantById:", err);
+      res.status(500).json({ message: "Server error", error: err.message });
+    } finally {
+      conn.release();
     }
   },
 
